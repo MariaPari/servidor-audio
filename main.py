@@ -17,8 +17,8 @@
 # 4. El servidor siempre esta activo escuchando posibles solicitudes para posteriromente atenderlos.
 #-----------------------------------------------------------------------------------------------------
 
-# LIBRERIAS 
-from fastapi import FastAPI, UploadFile, File, Form, WebSocket
+# LIBRERIAS
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import FileResponse
 import os
 import uuid
@@ -26,91 +26,67 @@ import wave
 
 app = FastAPI()
 
-#********************************************************
-#--> CARPETA DONDE SE ALMACENARAN LOS AUDIOS QUE LLEGUEN
-#********************************************************
+# CARPETA DE AUDIOS
 CARPETA = "grabaciones"
 os.makedirs(CARPETA, exist_ok=True)
 
-raspberry_ws = None
-
-#*********************************
-#--> CONEXION CON LA RASPBERRY PI 
-#*********************************
-@app.websocket("/ws")
-async def ws_raspberry(ws: WebSocket):
-    global raspberry_ws
-    await ws.accept()
-    raspberry_ws = ws
-    print("Raspberry conectada")
-
-    try:
-        while True:
-            await ws.receive_text()
-    except:
-        raspberry_ws = None
-        print("Raspberry desconectada")
-
-
-#***********************************************************************
-#--> FUNCION PARA NOTIFICAR LA LLEGADA DE UN NUEVO AUDIO A LA RASPBERRY
-#***********************************************************************
-async def notificar(data):
-    global raspberry_ws
-
-    if raspberry_ws:
-        try:
-            await raspberry_ws.send_json(data)
-        except:
-            raspberry_ws = None
-
+# VARIABLE GLOBAL (ultimo audio recibido)
+ultimo_audio = None
 
 #********************************************************
-#--> RECEPCION DE AUDIOS PROVENIENTES DE DISTINTOS ESP32
+#--> RECEPCION DE AUDIOS
 #********************************************************
 @app.post("/subir-audio/")
 async def subir_audio(
-    file: UploadFile = File(...),               #archivo.wav
-    dispositivo: str = Form(...),               #nombre del dispositivo de donde llego el audio
-    timestamp: str = Form(...)                  #hora del evento detectado
+    file: UploadFile = File(...),
+    dispositivo: str = Form(...),
+    timestamp: str = Form(...)
 ):
+    global ultimo_audio
 
-    nombre = f"{uuid.uuid4()}.wav"              #almacenamos el audio con un nombre aleatorio para evitar choques
-    ruta = os.path.join(CARPETA, nombre)        #ruta del archivo.wav donde se lo almaceno
+    nombre = f"{uuid.uuid4()}.wav"
+    ruta = os.path.join(CARPETA, nombre)
 
     raw = await file.read()
 
-    #convertimos el audio(bytes) a .wav
+    # GUARDAR COMO WAV
     with wave.open(ruta, "wb") as wf:
         wf.setnchannels(1)
-        wf.setsampwidth(2)      
-        wf.setframerate(16000)  
+        wf.setsampwidth(2)
+        wf.setframerate(16000)
         wf.writeframes(raw)
 
     print(f"Audio OK {dispositivo} {timestamp}")
 
-    #notificamos la llegada del nuevo audio a la raspberry 
-    await notificar({
-        "evento": "nuevo_audio",
+    # GUARDAR INFO DEL ULTIMO AUDIO
+    ultimo_audio = {
         "archivo": nombre,
         "dispositivo": dispositivo,
         "timestamp": timestamp
-    })
+    }
 
     return {"ok": True, "archivo": nombre}
 
 
-#*************************************************************
-#--> LE PROPORCIONAMOS LA RUTA DEL ARCHIVO.WAV A LA RASPBERRY
-#*************************************************************
+#********************************************************
+#--> OBTENER ULTIMO AUDIO
+#********************************************************
+@app.get("/ultimo-audio")
+def get_ultimo_audio():
+    return ultimo_audio if ultimo_audio else {}
+
+
+#********************************************************
+#--> DESCARGAR AUDIO
+#********************************************************
 @app.get("/audio/{nombre}")
 def get_audio(nombre: str):
     return FileResponse(os.path.join(CARPETA, nombre))
 
 
-#**************
-#--> CABECERA
-#**************
+#********************************************************
+#--> ROOT
+#********************************************************
 @app.get("/")
 def root():
-    return {"estado": "ok esta bien"}
+    return {"estado": "ok"}
