@@ -26,12 +26,13 @@ import wave
 
 app = FastAPI()
 
-# CARPETA DE AUDIOS
+# CARPETA DONDE SE GUARDAN LOS AUDIOS
 CARPETA = "grabaciones"
 os.makedirs(CARPETA, exist_ok=True)
 
-# VARIABLE GLOBAL (ultimo audio recibido)
-ultimo_audio = None
+# HISTORIAL Y CONTADOR
+historial = []
+contador_id = 0
 
 #********************************************************
 #--> RECEPCION DE AUDIOS
@@ -42,38 +43,44 @@ async def subir_audio(
     dispositivo: str = Form(...),
     timestamp: str = Form(...)
 ):
-    global ultimo_audio
+    global historial, contador_id
 
     nombre = f"{uuid.uuid4()}.wav"
     ruta = os.path.join(CARPETA, nombre)
 
     raw = await file.read()
 
-    # GUARDAR COMO WAV
+    # GUARDAR WAV
     with wave.open(ruta, "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(16000)
         wf.writeframes(raw)
 
-    print(f"Audio OK {dispositivo} {timestamp}")
+    # GENERAR ID
+    contador_id += 1
 
-    # GUARDAR INFO DEL ULTIMO AUDIO
-    ultimo_audio = {
+    data = {
+        "id": contador_id,
         "archivo": nombre,
         "dispositivo": dispositivo,
         "timestamp": timestamp
     }
 
-    return {"ok": True, "archivo": nombre}
+    historial.append(data)
+
+    print(f"Audio recibido: {data}")
+
+    return {"ok": True, "id": contador_id}
 
 
 #********************************************************
-#--> OBTENER ULTIMO AUDIO
+#--> OBTENER NUEVOS AUDIOS DESDE UN ID
 #********************************************************
-@app.get("/ultimo-audio")
-def get_ultimo_audio():
-    return ultimo_audio if ultimo_audio else {}
+@app.get("/nuevos/{ultimo_id}")
+def get_nuevos(ultimo_id: int):
+    nuevos = [a for a in historial if a["id"] > ultimo_id]
+    return nuevos
 
 
 #********************************************************
