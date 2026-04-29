@@ -113,4 +113,4 @@ def get_audio(nombre: str):
 #**************
 @app.get("/")
 def root():
-    return {"estado": "ok"}
+    return {"estado": "ok esta bien"}
