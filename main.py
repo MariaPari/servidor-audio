@@ -5,9 +5,9 @@
 #****************************************************************************************************
 # Descripcion:
 # Este programa es el servidor quien recepcionara los datos provenientes de otros ESP32,
-# la raspberry pi sera el cliente de este quien estarea conectado con websocket, los audios
-# se guardan temporalemnte en la carpeta del servidor, la llegada de un nuevo audio implica 
-# una alerta para la raspberry quien descargara ese audio del servidor para su posterior 
+# la raspberry pi sera el cliente de este quien estara conectada a este servidor, los audios
+# se guardan temporalemnte en la carpeta del servidor, cada cierto tiempo(1 seg) el cliente(la raspberry) 
+# preguntara al servidor si hay nuevos audios y si hay nuevos audios descargara esos audios del servidor para su posterior 
 # procesamiento.
 # Funciones principales:
 #
@@ -18,11 +18,15 @@
 #-----------------------------------------------------------------------------------------------------
 
 # LIBRERIAS
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Body
 from fastapi.responses import FileResponse
 import os
 import uuid
 import wave
+import time
+import asyncio
+
+lock = asyncio.Lock()
 
 app = FastAPI()
 
@@ -30,22 +34,23 @@ app = FastAPI()
 CARPETA = "grabaciones"
 os.makedirs(CARPETA, exist_ok=True)
 
-# HISTORIAL Y CONTADOR
-historial = []
-contador_id = 0
+# HISTORIAL
+historial = {}
 
-#********************************************************
+#************************
 #--> RECEPCION DE AUDIOS
-#********************************************************
+#************************
 @app.post("/subir-audio/")
 async def subir_audio(
     file: UploadFile = File(...),
     dispositivo: str = Form(...),
     timestamp: str = Form(...)
 ):
-    global historial, contador_id
+    global historial
 
-    nombre = f"{uuid.uuid4()}.wav"
+    id_audio = str(uuid.uuid4())
+
+    nombre = f"{id_audio}.wav"
     ruta = os.path.join(CARPETA, nombre)
 
     raw = await file.read()
@@ -57,39 +62,59 @@ async def subir_audio(
         wf.setframerate(16000)
         wf.writeframes(raw)
 
-    # GENERAR ID
-    contador_id += 1
-
     data = {
-        "id": contador_id,
+        "id": id_audio,
         "archivo": nombre,
         "dispositivo": dispositivo,
-        "timestamp": timestamp
+        "tiempo_evento_ESP32": timestamp,
+        "timestamp": time.time()
     }
 
-    historial.append(data)
+    async with lock:
+        historial[id_audio] = data
 
     print(f"Audio recibido: {data}")
 
-    return {"ok": True, "id": contador_id}
+    return {"ok": True, "id": data["id"]}
 
 
-#********************************************************
+#**************************************
 #--> OBTENER NUEVOS AUDIOS DESDE UN ID
-#********************************************************
-@app.get("/nuevos/{ultimo_id}")
-def get_nuevos(ultimo_id: int):
-    nuevos = [a for a in historial if a["id"] > ultimo_id]
+#**************************************
+@app.get("/nuevos/")
+async def get_nuevos(desde: float = 0):
+    async with lock:
+        nuevos = [a for a in historial.values() if a["timestamp"] > desde]
     return nuevos
 
-
-#********************************************************
+#********************
 #--> DESCARGAR AUDIO
-#********************************************************
+#********************
 @app.get("/audio/{nombre}")
-def get_audio(nombre: str):
+async def get_audio(nombre: str):
     return FileResponse(os.path.join(CARPETA, nombre))
 
+#**************************************
+#--> CONFIRMAR DESCARGA Y BORRAR AUDIO
+#**************************************
+@app.post("/confirmar-audio/")
+async def confirmar_audio(data: dict = Body(...)):
+    id_audio = data.get("id")
+
+    async with lock:
+        audio = historial.get(id_audio)
+
+        if not audio:
+            return {"ok": True}
+
+        ruta = os.path.join(CARPETA, audio["archivo"])
+
+        if os.path.exists(ruta):
+            os.remove(ruta)
+
+        del historial[id_audio]
+
+    return {"ok": True}
 
 #********************************************************
 #--> ROOT
