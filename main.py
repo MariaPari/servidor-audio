@@ -20,7 +20,9 @@
 # 5. Eliminacion tras confirmacion
 #------------------------------------------------------------------------------------------
 
-# LIBRERIAS
+#*********************
+#--> LIBRERIAS USADAS
+#*********************
 from fastapi import FastAPI, UploadFile, File, Form, Body
 from fastapi.responses import FileResponse
 import os
