@@ -1,21 +1,24 @@
-#----------------------------------------------------------------------------------------------------
-#****************************************************************************************************
-#--> CAPTURA DE AUDIO INMP441 (SERVIDOR WEBSOCKET + FASTAPI)
-#-->              .: SERVIDOR CENTRAL DE RECEPCION EN LA NUBE:.
-#****************************************************************************************************
+#-----------------------------------------------------------------------------------------
+#*****************************************************************************************
+#--> SERVIDOR CENTRAL DE RECEPCION DE AUDIO (FASTAPI)
+#*****************************************************************************************
 # Descripcion:
-# Este programa es el servidor quien recepcionara los datos provenientes de otros ESP32,
-# la raspberry pi sera el cliente de este quien estara conectada a este servidor, los audios
-# se guardan temporalemnte en la carpeta del servidor, cada cierto tiempo(1 seg) el cliente(la raspberry) 
-# preguntara al servidor si hay nuevos audios y si hay nuevos audios descargara esos audios del servidor para su posterior 
-# procesamiento.
-# Funciones principales:
+# Servidor encargado de recibir audios desde multiples ESP32, almacenarlos temporalmente
+# en formato WAV y gestionar su distribucion a una Raspberry Pi para su procesamiento.
 #
-# 1. Acepta multiples conexiones simultaneas desde dispositivos ESP32
-# 2. Escucha transmisiones de audio durante 5 segundos por conexion, de forma concurrente
-# 3. Da aviso a la raspberry del audio llegado para que este descargue el audio del servidor
-# 4. El servidor siempre esta activo escuchando posibles solicitudes para posteriromente atenderlos.
-#-----------------------------------------------------------------------------------------------------
+# Cada audio incluye metadata como ID unico, dispositivo, timestamp y ubicacion.
+# La Raspberry consulta periodicamente al servidor para detectar nuevos audios,
+# descargarlos y luego confirmar su recepcion para su eliminacion del sistema.
+#
+# El servidor soporta multiples conexiones concurrentes y opera de forma continua.
+#
+# Funciones principales:
+# 1. Recepcion de audios desde ESP32
+# 2. Registro de metadata (ID, tiempo, ubicacion)
+# 3. Consulta de nuevos audios
+# 4. Descarga de archivos
+# 5. Eliminacion tras confirmacion
+#------------------------------------------------------------------------------------------
 
 # LIBRERIAS
 from fastapi import FastAPI, UploadFile, File, Form, Body
@@ -44,7 +47,9 @@ historial = {}
 async def subir_audio(
     file: UploadFile = File(...),
     dispositivo: str = Form(...),
-    timestamp: str = Form(...)
+    timestamp: str = Form(...),
+    latitud: float = Form(...),
+    longitud: float = Form(...)
 ):
     global historial
 
@@ -67,6 +72,8 @@ async def subir_audio(
         "archivo": nombre,
         "dispositivo": dispositivo,
         "tiempo_evento_ESP32": timestamp,
+        "latitud": latitud,
+        "longitud": longitud,
         "timestamp": time.time()
     }
 
@@ -116,9 +123,9 @@ async def confirmar_audio(data: dict = Body(...)):
 
     return {"ok": True}
 
-#********************************************************
+#*********
 #--> ROOT
-#********************************************************
+#*********
 @app.get("/")
 def root():
     return {"estado": "ok"}
