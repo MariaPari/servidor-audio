@@ -14,7 +14,7 @@
 #
 # Funciones principales:
 # 1. Recepcion de audios desde ESP32
-# 2. Registro de metadata (ID, tiempo, ubicacion)
+# 2. Registro de metadata (ID, tiempo, ubicacion, dia de la semana)
 # 3. Consulta de nuevos audios
 # 4. Descarga de archivos
 # 5. Eliminacion tras confirmacion
@@ -51,7 +51,8 @@ async def subir_audio(
     dispositivo: str = Form(...),
     timestamp: str = Form(...),
     latitud: float = Form(...),
-    longitud: float = Form(...)
+    longitud: float = Form(...),
+    dia_semana: int = Form(...),
 ):
     global historial
 
@@ -76,6 +77,7 @@ async def subir_audio(
         "tiempo_evento_ESP32": timestamp,
         "latitud": latitud,
         "longitud": longitud,
+        "dia_semana": dia_semana,
         "timestamp": time.time()
     }
 
