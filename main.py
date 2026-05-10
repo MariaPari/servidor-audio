@@ -32,7 +32,7 @@ import time
 import asyncio
 
 lock = asyncio.Lock()
-semaforo = asyncio.Semaphore(40)
+semaforo = asyncio.Semaphore(30)
 
 app = FastAPI()
 
