@@ -32,6 +32,7 @@ import time
 import asyncio
 
 lock = asyncio.Lock()
+semaforo = asyncio.Semaphore(40)
 
 app = FastAPI()
 
@@ -54,39 +55,40 @@ async def subir_audio(
     longitud: float = Form(...),
     dia_semana: int = Form(...),
 ):
-    global historial
+    async with semaforo:
+        global historial
 
-    id_audio = str(uuid.uuid4())
+        id_audio = str(uuid.uuid4())
 
-    nombre = f"{id_audio}.wav"
-    ruta = os.path.join(CARPETA, nombre)
+        nombre = f"{id_audio}.wav"
+        ruta = os.path.join(CARPETA, nombre)
 
-    raw = await file.read()
+        raw = await file.read()
 
-    # GUARDAR WAV
-    with wave.open(ruta, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(16000)
-        wf.writeframes(raw)
+        # GUARDAR WAV
+        with wave.open(ruta, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            wf.writeframes(raw)
 
-    data = {
-        "id": id_audio,
-        "archivo": nombre,
-        "dispositivo": dispositivo,
-        "tiempo_evento_ESP32": timestamp,
-        "latitud": latitud,
-        "longitud": longitud,
-        "dia_semana": dia_semana,
-        "timestamp": time.time()
-    }
+        data = {
+            "id": id_audio,
+            "archivo": nombre,
+            "dispositivo": dispositivo,
+            "tiempo_evento_ESP32": timestamp,
+            "latitud": latitud,
+            "longitud": longitud,
+            "dia_semana": dia_semana,
+            "timestamp": time.time()
+        }
 
-    async with lock:
-        historial[id_audio] = data
+        async with lock:
+            historial[id_audio] = data
 
-    print(f"Audio recibido: {data}")
+        print(f"Audio recibido: {data}")
 
-    return {"ok": True, "id": data["id"]}
+        return {"ok": True, "id": data["id"]}
 
 
 #**************************************
