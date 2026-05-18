@@ -161,7 +161,7 @@ async def get_audio(nombre: str):
 @app.get("/imagen/{nombre}")
 async def get_imagen(nombre: str):
     nombre = os.path.basename(nombre)
-    return FileResponse(os.path.join(CARPETA, nombre),media_type="image/jpeg")
+    return FileResponse(os.path.join(CARPETA_IMAGENES, nombre),media_type="image/jpeg")
 
 #***********************************************
 #--> CONFIRMAR DESCARGA Y BORRAR AUDIO E IMAGEN
