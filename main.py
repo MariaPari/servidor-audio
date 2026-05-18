@@ -1,21 +1,23 @@
 #-----------------------------------------------------------------------------------------
 #*****************************************************************************************
-#--> SERVIDOR CENTRAL DE RECEPCION DE AUDIO (FASTAPI)
+#--> SERVIDOR CENTRAL DE RECEPCION DE AUDIO E IMAGEN (FASTAPI)
 #*****************************************************************************************
 # Descripcion:
-# Servidor encargado de recibir audios desde multiples ESP32, almacenarlos temporalmente
-# en formato WAV y gestionar su distribucion a una Raspberry Pi para su procesamiento.
+# Servidor encargado de recibir audios e imagenes desde multiples ESP32, almacenarlos 
+# temporalmente en formato WAV para audios y formato .jpg para imagenes
+# y gestionar su distribucion a una Raspberry Pi para su procesamiento.
 #
 # Cada audio incluye metadata como ID unico, dispositivo, timestamp y ubicacion.
 # La Raspberry consulta periodicamente al servidor para detectar nuevos audios,
-# descargarlos y luego confirmar su recepcion para su eliminacion del sistema.
+# descargarlos y luego confirmar su recepcion para su eliminacion del sistema, de igual
+# forma para las imagenes se tendra un ID unico, dispositivo, timestamp.
 #
 # El servidor soporta multiples conexiones concurrentes y opera de forma continua.
 #
 # Funciones principales:
-# 1. Recepcion de audios desde ESP32
+# 1. Recepcion de audios e imagenes desde ESP32
 # 2. Registro de metadata (ID, tiempo, ubicacion, dia de la semana)
-# 3. Consulta de nuevos audios
+# 3. Consulta de nuevos audios e imagenes
 # 4. Descarga de archivos
 # 5. Eliminacion tras confirmacion
 #------------------------------------------------------------------------------------------
@@ -30,6 +32,7 @@ import uuid
 import wave
 import time
 import asyncio
+from typing import Optional
 
 lock = asyncio.Lock()
 semaforo = asyncio.Semaphore(30)
@@ -39,6 +42,10 @@ app = FastAPI()
 # CARPETA DONDE SE GUARDAN LOS AUDIOS
 CARPETA = "grabaciones"
 os.makedirs(CARPETA, exist_ok=True)
+
+# CARPETA DONDE SE GUARDAN LAS IMAGENES
+CARPETA_IMAGENES = "imagenes"
+os.makedirs(CARPETA_IMAGENES, exist_ok=True)
 
 # HISTORIAL
 historial = {}
@@ -56,8 +63,6 @@ async def subir_audio(
     dia_semana: int = Form(...),
 ):
     async with semaforo:
-        global historial
-
         id_audio = str(uuid.uuid4())
 
         nombre = f"{id_audio}.wav"
@@ -74,6 +79,7 @@ async def subir_audio(
 
         data = {
             "id": id_audio,
+            "tipo": "audio",
             "archivo": nombre,
             "dispositivo": dispositivo,
             "tiempo_evento_ESP32": timestamp,
@@ -90,14 +96,55 @@ async def subir_audio(
 
         return {"ok": True, "id": data["id"]}
 
+#**************************
+#--> RECEPCION DE IMAGENES
+#**************************
+@app.post("/subir-imagen/")
+async def subir_imagen(
+    file: UploadFile = File(...),
+    dispositivo: str = Form(...),
+    timestamp: str = Form(...),
+):
+    async with semaforo:
+        id_imagen = str(uuid.uuid4())
 
-#**************************************
-#--> OBTENER NUEVOS AUDIOS DESDE UN ID
-#**************************************
+        extension = "jpg"
+        if file.filename and "." in file.filename:
+            extension = file.filename.split(".")[-1]
+        nombre = f"{id_imagen}.{extension}"
+
+        ruta = os.path.join(CARPETA_IMAGENES, nombre)
+
+        contenido = await file.read()
+
+        with open(ruta, "wb") as f:
+            f.write(contenido)
+
+        data = {
+            "id": id_imagen,
+            "tipo": "imagen",
+            "archivo": nombre,
+            "dispositivo": dispositivo,
+            "tiempo_evento_ESP32": timestamp,
+            "timestamp": time.time()
+        }
+
+        async with lock:
+            historial[id_imagen] = data
+
+        print(f"Imagen recibida: {data}")
+
+        return {"ok": True, "id": data["id"]}
+    
+#*************************************************
+#--> OBTENER NUEVOS AUDIOS E IMAGENES DESDE UN ID
+#*************************************************
 @app.get("/nuevos/")
-async def get_nuevos(desde: float = 0):
+async def get_nuevos(desde: float = 0,tipo: Optional[str] = None):
+    if tipo not in [None, "audio", "imagen"]:
+        return {"error": "tipo invalido"}
     async with lock:
-        nuevos = [a for a in historial.values() if a["timestamp"] > desde]
+        nuevos = [a for a in historial.values() if a["timestamp"] > desde and (tipo is None or a["tipo"] == tipo)]
     return nuevos
 
 #********************
@@ -105,13 +152,22 @@ async def get_nuevos(desde: float = 0):
 #********************
 @app.get("/audio/{nombre}")
 async def get_audio(nombre: str):
-    return FileResponse(os.path.join(CARPETA, nombre))
+    nombre = os.path.basename(nombre)
+    return FileResponse(os.path.join(CARPETA, nombre),media_type="audio/wav")
 
-#**************************************
-#--> CONFIRMAR DESCARGA Y BORRAR AUDIO
-#**************************************
-@app.post("/confirmar-audio/")
-async def confirmar_audio(data: dict = Body(...)):
+#**********************
+#--> DESCARGAR IMAGEN
+#**********************
+@app.get("/imagen/{nombre}")
+async def get_imagen(nombre: str):
+    nombre = os.path.basename(nombre)
+    return FileResponse(os.path.join(CARPETA, nombre),media_type="image/jpeg")
+
+#***********************************************
+#--> CONFIRMAR DESCARGA Y BORRAR AUDIO E IMAGEN
+#***********************************************
+@app.post("/confirmar/")
+async def confirmar_archivo(data: dict = Body(...)):
     id_audio = data.get("id")
 
     async with lock:
@@ -120,7 +176,10 @@ async def confirmar_audio(data: dict = Body(...)):
         if not audio:
             return {"ok": True}
 
-        ruta = os.path.join(CARPETA, audio["archivo"])
+        if audio["tipo"] == "audio":
+            ruta = os.path.join(CARPETA, audio["archivo"])
+        else:
+            ruta = os.path.join(CARPETA_IMAGENES, audio["archivo"])
 
         if os.path.exists(ruta):
             os.remove(ruta)
