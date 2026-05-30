@@ -57,12 +57,12 @@ pool = None
 async def startup():
     global pool
     pool = await asyncpg.create_pool(
-        user="postgres.vlhsalxncoicavjuerbc",
-        password="audienciaTV2026MP",
+        host="db.vlhsalxncoicavjuerbc.supabase.co",
         database="postgres",
-        host="aws-1-us-east-1.pooler.supabase.com",
-        port=6543,
-        min_size=1,
+        user="postgres",
+        password="audienciaTV2026MP",
+        port=5432,
+        min_size=5,
         max_size=20
     )
 
