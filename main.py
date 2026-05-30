@@ -33,6 +33,7 @@ import wave
 import time
 import asyncio
 from typing import Optional
+import asyncpg
 
 lock = asyncio.Lock()
 semaforo = asyncio.Semaphore(30)
@@ -47,6 +48,68 @@ os.makedirs(CARPETA, exist_ok=True)
 CARPETA_IMAGENES = "imagenes"
 os.makedirs(CARPETA_IMAGENES, exist_ok=True)
 
+#**************************************************
+#--> FUNCION PARA LA CONEXION CON LA BASE DE DATOS
+#**************************************************
+pool = None
+
+@app.on_event("startup")
+async def startup():
+    global pool
+    pool = await asyncpg.create_pool(
+        user="postgres.vlhsalxncoicavjuerbc",
+        password="audienciaTV2026MP",
+        database="postgres",
+        host="aws-1-us-east-1.pooler.supabase.com",
+        port=6543,
+        min_size=1,
+        max_size=20
+    )
+
+#***************************************************************************************************************************************
+#--> FUNCION PARA ACTUALIZAR LOS DATOS DE LOS DISPOSITIVOS QUE LLEGUEN (SOLO SE ATENDERA AQUELLOS DISPOSITIVOS PREVIAMENTE REGISTRADOS)
+#    , SI EL DISPOSITIVO NO FUE REGISTRADO ENTONCES SE IGNORA TAL DISPOSITIVO
+#***************************************************************************************************************************************
+async def dispositivo_registrado(dispositivo):
+    async with pool.acquire() as conn:
+
+        fila = await conn.fetchrow(
+            """
+            SELECT id
+            FROM dispositivos_tv_estudio
+            WHERE id = $1
+            """,
+            dispositivo
+        )
+        return fila is not None
+    
+async def actualizar_dispositivo(dispositivo,latitud,longitud,estado_tv,estado_sensores):
+    async with pool.acquire() as conn:
+
+        resultado = await conn.execute(
+            """
+            UPDATE dispositivos_tv_estudio
+            SET
+                latitud = $1,
+                longitud = $2,
+                estado_tv = $3,
+                estado_sensores = $4
+            WHERE id = $5
+            """,
+            latitud,
+            longitud,
+            estado_tv,
+            estado_sensores,
+            dispositivo
+        )
+
+        if resultado == "UPDATE 0":
+            print(f"Dispositivo no registrado: {dispositivo}")
+            return False
+
+        print(f"Dispositivo actualizado: {dispositivo}")
+        return True
+
 # HISTORIAL
 historial = {}
 
@@ -57,11 +120,20 @@ historial = {}
 async def subir_audio(
     file: UploadFile = File(...),
     dispositivo: str = Form(...),
-    timestamp: str = Form(...),
     latitud: float = Form(...),
     longitud: float = Form(...),
     dia_semana: int = Form(...),
+    estado_tv: bool = Form(...),
+    estado_sensores: int = Form(...)
 ):
+    # Verificamos que el dispositivo existe y actualizar datos
+    actualizado = await actualizar_dispositivo(dispositivo,latitud,longitud,estado_tv,estado_sensores)
+    if not actualizado:
+        return {
+            "ok": False,
+            "error": "Dispositivo no registrado"
+        }
+
     async with semaforo:
         id_audio = str(uuid.uuid4())
 
@@ -82,9 +154,6 @@ async def subir_audio(
             "tipo": "audio",
             "archivo": nombre,
             "dispositivo": dispositivo,
-            "tiempo_evento_ESP32": timestamp,
-            "latitud": latitud,
-            "longitud": longitud,
             "dia_semana": dia_semana,
             "timestamp": time.time()
         }
@@ -103,8 +172,14 @@ async def subir_audio(
 async def subir_imagen(
     file: UploadFile = File(...),
     dispositivo: str = Form(...),
-    timestamp: str = Form(...),
 ):
+    # Verificamos que el dispositivo existe
+    if not await dispositivo_registrado(dispositivo):
+        return {
+            "ok": False,
+            "error": "Dispositivo no registrado"
+        }
+    
     async with semaforo:
         id_imagen = str(uuid.uuid4())
 
@@ -125,7 +200,6 @@ async def subir_imagen(
             "tipo": "imagen",
             "archivo": nombre,
             "dispositivo": dispositivo,
-            "tiempo_evento_ESP32": timestamp,
             "timestamp": time.time()
         }
 
@@ -187,6 +261,14 @@ async def confirmar_archivo(data: dict = Body(...)):
         del historial[id_audio]
 
     return {"ok": True}
+
+#******************************
+#--> CERRAMOS LA CONEXION POOL
+#******************************
+@app.on_event("shutdown")
+async def shutdown():
+    await pool.close()
+    print("Pool PostgreSQL cerrado")
 
 #*********
 #--> ROOT
