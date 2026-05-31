@@ -33,7 +33,6 @@ import wave
 import time
 import asyncio
 from typing import Optional
-import asyncpg
 
 lock = asyncio.Lock()
 semaforo = asyncio.Semaphore(30)
