@@ -67,7 +67,8 @@ async def startup():
             password="audienciaTV2026MP",
             port=5432,
             min_size=5,
-            max_size=20
+            max_size=20,
+            ssl="require"
         )
 
         print("Conexion OK")
