@@ -55,16 +55,26 @@ pool = None
 
 @app.on_event("startup")
 async def startup():
+    print("Iniciando servidor...")
+
     global pool
-    pool = await asyncpg.create_pool(
-        host="db.vlhsalxncoicavjuerbc.supabase.co",
-        database="postgres",
-        user="postgres",
-        password="audienciaTV2026MP",
-        port=5432,
-        min_size=5,
-        max_size=20
-    )
+
+    try:
+        pool = await asyncpg.create_pool(
+            host="db.vlhsalxncoicavjuerbc.supabase.co",
+            database="postgres",
+            user="postgres",
+            password="audienciaTV2026MP",
+            port=5432,
+            min_size=5,
+            max_size=20
+        )
+
+        print("Conexion OK")
+
+    except Exception as e:
+        print("ERROR:", repr(e))
+        raise
 
 #***************************************************************************************************************************************
 #--> FUNCION PARA ACTUALIZAR LOS DATOS DE LOS DISPOSITIVOS QUE LLEGUEN (SOLO SE ATENDERA AQUELLOS DISPOSITIVOS PREVIAMENTE REGISTRADOS)
