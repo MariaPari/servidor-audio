@@ -75,9 +75,9 @@ async def dispositivo_registrado(dispositivo):
 
         fila = await conn.fetchrow(
             """
-            SELECT id
+            SELECT dispositivo_tv
             FROM dispositivos_tv_estudio
-            WHERE id = $1
+            WHERE dispositivo_tv = $1
             """,
             dispositivo
         )
@@ -94,7 +94,7 @@ async def actualizar_dispositivo(dispositivo,latitud,longitud,estado_tv,estado_s
                 longitud = $2,
                 estado_tv = $3,
                 estado_sensores = $4
-            WHERE id = $5
+            WHERE dispositivo_tv = $5
             """,
             latitud,
             longitud,
