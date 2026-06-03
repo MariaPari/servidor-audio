@@ -57,6 +57,7 @@ historial = {}
 async def subir_audio(
     file: UploadFile = File(...),
     dispositivo: str = Form(...),
+    tiempo_evento: str = Form(...),
     latitud: float = Form(...),
     longitud: float = Form(...),
     dia_semana: int = Form(...),
@@ -83,6 +84,7 @@ async def subir_audio(
             "tipo": "audio",
             "archivo": nombre,
             "dispositivo": dispositivo,
+            "tiempo_evento": tiempo_evento,
             "latitud": latitud,
             "longitud": longitud,
             "dia_semana": dia_semana,
