@@ -83,7 +83,7 @@ async def subir_audio(
             "tipo": "audio",
             "archivo": nombre,
             "dispositivo": dispositivo,
-            "latitud:": latitud,
+            "latitud": latitud,
             "longitud": longitud,
             "dia_semana": dia_semana,
             "estado_tv": estado_tv,
